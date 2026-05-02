@@ -1081,6 +1081,191 @@ src/
                     └── versions/route.ts
 ```
 
+### 7.5 去AI味系统 (De-AI-fication System)
+
+> **核心问题**：AI 生成的小说内容有强烈的"机器味"——八股文、模板化、缺乏人味的表达。这是 AI 写作工具面临的最大挑战，必须系统性地解决。
+
+#### 7.5.1 AI 味的典型表现
+
+| 特征 | AI 味写法 | 人类作者写法 |
+|------|----------|------------|
+| **万能开头** | "夜幕降临，华灯初上" | "七点了，灯还没亮" |
+| **过度描述** | "他的嘴角微微上扬，露出一抹若有若无的笑意" | "他笑了一下" |
+| **书面语泛滥** | "然而""值得注意的是""不可否认" | "可""不过""说真的" |
+| **完美对称** | 每段长度相似，结构工整 | 长短错落，有时一段只有几个字 |
+| **流水账对话** | "你好。""你好。""你叫什么名字？""我叫..." | 对话跳跃、省略、答非所问 |
+| **缺乏细节** | "房间里很乱" | "泡面盒堆了三层，键盘缝里全是饼干渣" |
+| **情绪直白** | "他感到非常愤怒" | "他攥紧拳头，指甲陷进肉里" |
+
+#### 7.5.2 多层次去AI味策略
+
+```
+┌─────────────────────────────────────────────────────┐
+│              去 AI 味系统架构                          │
+├─────────────────────────────────────────────────────┤
+│                                                       │
+│  层1: Prompt 级别                                      │
+│  ├── 反模板指令 — 明确禁止 AI 常见套路                  │
+│  ├── 好/坏例子注入 — 每次写作提供对比样例                │
+│  └── 作者风格参考 — 引用特定人类作家的技法                │
+│                                                       │
+│  层2: 生成参数调优                                      │
+│  ├── Temperature 动态调节 (0.8-1.2)                   │
+│  ├── Top-P / Top-K 多样性控制                          │
+│  └── Frequency/Presence Penalty 防重复                 │
+│                                                       │
+│  层3: 后处理检测                                        │
+│  ├── AI味评分引擎 — 对生成内容打分                     │
+│  ├── 模式库匹配 — 检测已知 AI 模板                     │
+│  └── 超限段落标记 → 自动重写                           │
+│                                                       │
+│  层4: 多样性增强                                        │
+│  ├── 句首多样性检查 — 避免连续3段同一句式开头           │
+│  ├── 段落长度分布控制 — 强制长短交错                    │
+│  └── 词汇多样性检查 — 避免同一词在100字内重复           │
+│                                                       │
+└─────────────────────────────────────────────────────┘
+```
+
+#### 7.5.3 层1: Prompt 级反AI味指令
+
+```typescript
+const ANTI_AI_SMELL_RULES = `
+## ⚠️ 严格禁止以下 AI 常见写法（违反者会被扣分）
+
+### 禁止使用的句式（一票否决）:
+1. "XXX 的 XXX" 堆砌 — 如"他露出了一抹意味深长的笑容"
+2. 万能情绪描写 — "他的心中涌起一股XXXX"
+3. 完美过渡句 — "就在这时""突然""就在这时，意想不到的事情发生了"
+4. 成语堆砌 — 连续使用3个以上成语
+5. 五官轮流描写 — "他皱了皱眉，叹了口气，摇了摇头"
+
+### 禁止使用的词汇:
+"然而""值得注意的是""不可否认""毋庸置疑""某种程度上"
+"众所周知""值得一提的是""不出所料""果不其然"
+
+### 必须做到的:
+1. 段落长度自然错落 — 从1个字到200字，不要规律交替
+2. 对话要"人话" — 带口癖、省略、停顿、抢话、沉默
+3. 描写用具体细节 — "三天的泡面盒" 代替 "凌乱的房间"
+4. 情感通过动作表现 — "指甲陷进肉里" 代替 "感到愤怒"
+5. 每章至少一句"不像小说的话" — 让读者觉得这是真人写的
+`;
+```
+
+#### 7.5.4 层2: 生成参数动态调节
+
+```typescript
+interface AntiAISmellConfig {
+  // 基础参数
+  baseTemperature: number;        // 0.85
+  baseTopP: number;              // 0.92
+  
+  // 多样性增强
+  frequencyPenalty: number;      // 0.3 — 惩罚重复用词
+  presencePenalty: number;       // 0.2 — 鼓励引入新概念
+  
+  // 根据写作模式调节
+  modeOverrides: Record<WritingMode, Partial<AntiAISmellConfig>>;
+}
+
+// 不同模式默认值
+const DEFAULT_CONFIG: AntiAISmellConfig = {
+  baseTemperature: 0.85,
+  baseTopP: 0.92,
+  frequencyPenalty: 0.3,
+  presencePenalty: 0.2,
+  modeOverrides: {
+    draft:   { baseTemperature: 0.95, frequencyPenalty: 0.4 },  // 草稿: 最大多样性
+    polish:  { baseTemperature: 0.75, frequencyPenalty: 0.2 },  // 润色: 保持风格
+    focus:   { baseTemperature: 0.80, frequencyPenalty: 0.3 },  // 聚焦: 平衡
+  },
+};
+```
+
+#### 7.5.5 层3: AI味检测引擎
+
+```typescript
+interface AISmellReport {
+  overallScore: number;           // 0-100, 越高越像AI
+  issues: AISmellIssue[];
+  suggestions: string[];
+}
+
+interface AISmellIssue {
+  type: 'template_opening' | 'emotion_cliche' | 'balaced_paragraphs'
+      | 'overused_words' | 'perfect_dialogue' | 'lack_of_detail'
+      | 'transition_cliche';
+  severity: 'minor' | 'major' | 'critical';
+  position: { start: number; end: number };
+  text: string;
+  suggestion: string;
+}
+
+class AISmellDetector {
+  // 检测规则库
+  private rules: AISmellRule[];
+  
+  // 对一段文本进行去AI味评分
+  analyze(text: string): AISmellReport;
+  
+  // 对整章进行扫描
+  scanChapter(chapter: Chapter): Promise<AISmellReport>;
+  
+  // 自动重写AI味过重的段落
+  autoRewrite(issue: AISmellIssue, context: string): Promise<string>;
+}
+```
+
+#### 7.5.6 层4: 多样性后处理器
+
+```typescript
+class DiversityEnhancer {
+  // 句首多样性检查
+  checkSentenceStartVariety(text: string): {
+    pass: boolean;
+    repeatedStarts: string[];
+    suggestion: string;
+  };
+  
+  // 段落长度分布检查
+  checkParagraphLengthDistribution(text: string): {
+    lengths: number[];
+    distribution: 'natural' | 'too_uniform';
+    suggestion: string;
+  };
+  
+  // 词汇多样性检查
+  checkVocabularyDiversity(text: string, windowSize: number): {
+    uniqueRatio: number;          // 低于0.6表示重复过多
+    repeatedWords: string[];
+    suggestion: string;
+  };
+}
+```
+
+#### 7.5.7 与现有系统的集成
+
+```
+去AI味系统不是独立模块，而是横切到所有写作管线中：
+
+写作管线入口
+  │
+  ├──→ PromptCompiler
+  │     └── 注入反AI味规则 (7.5.3)
+  │
+  ├──→ LLMAdapter.chat_stream()
+  │     └── 注入动态参数 (7.5.4)
+  │
+  ├──→ 生成完成
+  │     └── AISmellDetector.analyze() → 评分
+  │         ├── 分数 < 30 ✅ 通过
+  │         ├── 分数 30-60 ⚠️ 标记段落 → 自动重写
+  │         └── 分数 > 60 ❌ 整段重生成
+  │
+  └──→ DiversityEnhancer 后处理
+        └── 句首/段落/词汇多样性优化
+
 
 ## 八、API 设计
 
@@ -2075,7 +2260,16 @@ model ChapterStatusLog {
 ├── ✅ AI 自动分卷分章 (含建议字数分配)
 ├── ✅ 平台风格注入 (写作时自动注入平台风格指南)
 ├── ✅ 内容红线检测 (平台审核规则自动规避)
-└── ✅ Token 消耗预估算 (写作前就看到总成本)
+├── ✅ Token 消耗预估算 (写作前就看到总成本)
+└── ✅ 内容红线自动规避 (平台审核规则注入)
+
+去AI味层:
+├── ✅ 反AI味 Prompt 指令 (禁止模板句/禁止AI词汇/强制具体细节)
+├── ✅ 生成参数动态调节 (Temperature/TopP/FrequencyPenalty)
+├── ✅ AI味检测评分引擎 (0-100分, 自动重写高分段落)
+├── ✅ 多样性后处理器 (句首/段落长度/词汇多样性检查)
+├── ✅ 好/坏写作例子对比注入
+└── ✅ 人类作者风格参考系统
 ```
 
 ---
